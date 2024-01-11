@@ -150,6 +150,10 @@ class Robot():
                 from .hardware_robotiq import Robotiq
                 device['robot'] = Robotiq(name=name, **device['interface'])
 
+            elif device['interface']['type'] == 'frankahand':
+                from .hardware_frankahand import FrankaHand
+                device['robot'] = FrankaHand(name=name, **device['interface'])
+
             else:
                 print("ERROR: interface ({}) not found".format(device['interface']['type']))
                 raise NotImplemented
@@ -169,7 +173,7 @@ class Robot():
                 device['robot'].engage_motor(motor_id=device['actuator_ids'], enable=True)
 
             # Other devices
-            elif device['interface']['type'] in ['optitrack', 'franka', 'realsense', 'robotiq']:
+            elif device['interface']['type'] in ['optitrack', 'franka', 'realsense', 'robotiq', 'frankahand']:
                 device['robot'].connect()
 
             else:
@@ -209,6 +213,10 @@ class Robot():
                     current_sensor_value[name] = np.concatenate([sensors['joint_pos'], sensors['joint_vel']])
 
                 elif device['interface']['type'] == 'robotiq':
+                    sensors = device['robot'].get_sensors()
+                    current_sensor_value[name] = sensors
+
+                elif device['interface']['type'] == 'frankahand':
                     sensors = device['robot'].get_sensors()
                     current_sensor_value[name] = sensors
 
@@ -271,6 +279,16 @@ class Robot():
                         device['robot'].reset(robotiq_des_pos[0])
                     else:
                         device['robot'].apply_commands(robotiq_des_pos[0])
+
+                elif device['interface']['type'] == 'frankahand':
+                    frankahand_des_pos = []
+                    for actuator in device['actuator']:
+                        # calibrate
+                        frankahand_des_pos.append(control[actuator['sim_id']]*actuator['scale']+ actuator['offset'])
+                    if is_reset:
+                        device['robot'].reset(frankahand_des_pos[0])
+                    else:
+                        device['robot'].apply_commands(frankahand_des_pos[0])
                 else:
                     raise NotImplemented("ERROR: interface not found")
 
@@ -286,7 +304,7 @@ class Robot():
                     status = device['robot'].close(ids)
                     if status is True:
                         device['robot']= None
-            elif device['interface']['type'] in ['optitrack', 'franka', 'realsense', 'robotiq']:
+            elif device['interface']['type'] in ['optitrack', 'franka', 'realsense', 'robotiq', 'frankahand']:
                 if device['robot']:
                     print("Closing {} connection".format(device['interface']['type']))
                     status = device['robot'].close()
