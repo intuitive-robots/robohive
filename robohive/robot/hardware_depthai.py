@@ -1,3 +1,5 @@
+from threading import Thread
+import threading
 import numpy as np
 # from hardware_base import hardwareBase
 from robohive.robot.hardware_base import hardwareBase
@@ -8,7 +10,7 @@ import logging
 import copy
 import time
 import datetime
-import depthai
+import depthai as dai
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,34 +29,21 @@ class DAIThread(Thread):
         xoutRgb.setStreamName("rgb")
         camRgb.video.link(xoutRgb.input)
 
-        xin = pipeline.create(dai.node.XLinkIn)
-        xin.setStreamName("control")
-        xin.out.link(camRgb.inputControl)
-
-        # Properties
-        # videoEnc = pipeline.create(dai.node.VideoEncoder)
-        # videoEnc.setDefaultProfilePreset(1, dai.VideoEncoderProperties.Profile.MJPEG)
-        # camRgb.still.link(videoEnc.input)
-
-        # # Linking
-        # xoutStill = pipeline.create(dai.node.XLinkOut)
-        # xoutStill.setStreamName("still")
-        # videoEnc.bitstream.link(xoutStill.input)
-
         self.device_info = dai.DeviceInfo(device_MxId)
         self.pipeline = pipeline
 
         self.frame = None
         self.timestamp = None
+        self.should_stop = threading.Event()
 
     def run(self):
         with dai.Device(self.pipeline, self.device_info) as device:
             # Output queue will be used to get the rgb frames from the output defined above
             qRgb = device.getOutputQueue(name="rgb", maxSize=1, blocking=False)
-            while True:
+            while not self.should_stop.is_set():
                 inRgb = qRgb.get()
                 if inRgb is not None:
-                    self.frame = inRgb.getCvFrame()
+                    self.frame = inRgb.getFrame()
                     self.timestamp = time.time()
 
 class DepthAI(hardwareBase):
@@ -70,12 +59,16 @@ class DepthAI(hardwareBase):
     def get_sensors(self):
         # get all data from all topics
         last_img = copy.deepcopy(self.thread.frame)
+        while last_img is None:
+            last_img = copy.deepcopy(self.thread.frame)
+            time.sleep(0.1)
         return {'time':self.thread.timestamp, 'rgb': last_img}
 
     def apply_commands(self):
         return 0
 
     def close(self):
+        self.thread.should_stop.set()
         self.thread.join()
         return True
 
@@ -105,52 +98,45 @@ class DepthAI(hardwareBase):
         return 0
 
 
-# Get inputs from user
-def get_args():
-    parser = argparse.ArgumentParser(description="DepthAI Client: Connects to realsense pub.\n"
-    "\nExample: python robot/hardware_realsense.py -r realsense_815412070341/color/image_raw -d realsense_815412070341/depth_uncolored/image_raw")
+# # Get inputs from user
+# def get_args():
+#     parser = argparse.ArgumentParser(description="DepthAI Client: Connects to realsense pub.\n"
+#     "\nExample: python robot/hardware_realsense.py -r realsense_815412070341/color/image_raw -d realsense_815412070341/depth_uncolored/image_raw")
 
-    parser.add_argument("-r", "--rgb_topic",
-                        type=str,
-                        help="rgb_topic name of the camera",
-                        default="")
-    parser.add_argument("-d", "--d_topic",
-                        type=str,
-                        help="rgb_topic name of the camera",
-                        default="")
-    parser.add_argument("-v", "--view",
-                        type=None,
-                        help="Choice: CV2",
-                        )
-    return parser.parse_args()
+#     parser.add_argument("-r", "--rgb_topic",
+#                         type=str,
+#                         help="rgb_topic name of the camera",
+#                         default="")
+#     parser.add_argument("-d", "--d_topic",
+#                         type=str,
+#                         help="rgb_topic name of the camera",
+#                         default="")
+#     parser.add_argument("-v", "--view",
+#                         type=None,
+#                         help="Choice: CV2",
+#                         )
+#     return parser.parse_args()
 
 
 if __name__ == "__main__":
+    import cv2
 
-    args = get_args()
-    print(args)
-    rs = DepthAI(name="test cam", rgb_topic=args.rgb_topic, d_topic=args.d_topic)
+    # args = get_args()
+    # print(args)
+    MXID = '1844301071E7AB1200'
+    rs = DepthAI(name="test cam", device_MxId=MXID)
     rs.connect()
-    assert rs.okay(), "Couldn't connect to the camera (rgb_topic: {})".format(args.rgb_topic)
-
-    if args.view=='CV2':
-        import cv2
 
     for i in range(50):
         img = rs.get_sensors()
         if img['rgb'] is not None:
             print("Received image{} of size:".format(i), img['rgb'].shape, flush=True)
-            if args.view=='CV2':
-                cv2.imshow("rgb", img['rgb'])
-                cv2.waitKey(1)
+            cv2.imshow("rgb", img['rgb'])
+            cv2.waitKey(1)
 
-        if img['d'] is not None:
-            if args.view=='CV2':
-                cv2.imshow("depth", img['d'])
-                cv2.waitKey(1)
-            print("Received depth{} of size:".format(i), img['d'].shape, flush=True)
-
-        if img['rgb'] is None and img['d'] is None:
+        if img['rgb'] is None:
             print(img)
 
         time.sleep(0.1)
+
+    rs.close()
