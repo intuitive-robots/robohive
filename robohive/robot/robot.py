@@ -146,6 +146,10 @@ class Robot():
                     from .hardware_realsense_single import RealsenseAPI
                     device['robot'] = RealsenseAPI(**device['interface'])
 
+            elif device['interface']['type'] == 'depthai':
+                from .hardware_depthai import DepthAI
+                device['robot'] = DepthAI(name=name, **device['interface'])
+
             elif device['interface']['type'] == 'robotiq':
                 from .hardware_robotiq import Robotiq
                 device['robot'] = Robotiq(name=name, **device['interface'])
@@ -173,7 +177,7 @@ class Robot():
                 device['robot'].engage_motor(motor_id=device['actuator_ids'], enable=True)
 
             # Other devices
-            elif device['interface']['type'] in ['optitrack', 'franka', 'realsense', 'robotiq', 'frankahand']:
+            elif device['interface']['type'] in ['optitrack', 'franka', 'realsense', 'depthai', 'robotiq', 'frankahand']:
                 device['robot'].connect()
 
             else:
@@ -304,7 +308,7 @@ class Robot():
                     status = device['robot'].close(ids)
                     if status is True:
                         device['robot']= None
-            elif device['interface']['type'] in ['optitrack', 'franka', 'realsense', 'robotiq', 'frankahand']:
+            elif device['interface']['type'] in ['optitrack', 'franka', 'realsense', 'depthai' 'robotiq', 'frankahand']:
                 if device['robot']:
                     print("Closing {} connection".format(device['interface']['type']))
                     status = device['robot'].close()
@@ -446,7 +450,7 @@ class Robot():
             for ind, cam_name in enumerate(cameras):
                 assert cam_name in self.robot_config.keys(), "{} camera not found".format(cam_name)
                 device = self.robot_config[cam_name]
-                assert device['interface']['type'] == 'realsense', "Check interface type for {}".format(cam)
+                # assert device['interface']['type'] == 'realsense', "Check interface type for {}".format(cam)
                 data = device['robot'].get_sensors()
                 data_height = data['rgb'].shape[0]
                 assert data_height == height, "Incorrect image height: required:{}, found:{}".format(height, data_height)

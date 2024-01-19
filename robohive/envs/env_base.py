@@ -311,7 +311,11 @@ class MujocoEnv(gym.Env, gym.utils.EzPickle, ObsVecDict):
         # Don't update extero keys by default for efficiency
         # User should make an explicit call to get_visual_dict when needed
         if update_exteroception:
+            # import time
+            # aa = time.time()
             self.visual_dict = self.get_visuals(sim=self.sim_obsd)
+            # bb = time.time()
+            # print("Time taken for visual dict: ", bb-aa)
 
         # recoved observation vector from the obs_dict
         t, obs = self.obsdict2obsvec(self.obs_dict, self.obs_keys)

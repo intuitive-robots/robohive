@@ -21,10 +21,34 @@ class DAIThread(Thread):
 
         pipeline = dai.Pipeline()
 
+        # # Closer-in minimum depth, disparity range is doubled (from 95 to 190):
+        # extended_disparity = False
+        # # Better accuracy for longer distance, fractional disparity 32-levels:
+        # subpixel = False
+        # # Better handling for occlusions:
+        # lr_check = True
+        # monoLeft = pipeline.create(dai.node.MonoCamera)
+        # monoRight = pipeline.create(dai.node.MonoCamera)
+        # monoLeft.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
+        # monoLeft.setCamera("left")
+        # monoRight.setResolution(dai.MonoCameraProperties.SensorResolution.THE_400_P)
+        # monoRight.setCamera("right")
+        # depth = pipeline.create(dai.node.StereoDepth)
+        # depth.setDefaultProfilePreset(dai.node.StereoDepth.PresetMode.HIGH_DENSITY)
+        # # Options: MEDIAN_OFF, KERNEL_3x3, KERNEL_5x5, KERNEL_7x7 (default)
+        # depth.initialConfig.setMedianFilter(dai.MedianFilter.KERNEL_7x7)
+        # depth.setLeftRightCheck(lr_check)
+        # depth.setExtendedDisparity(extended_disparity)
+        # depth.setSubpixel(subpixel)
+        # xoutDepth = pipeline.create(dai.node.XLinkOut)
+        # xoutDepth.setStreamName("depth")
+        # monoLeft.out.link(depth.left)
+        # monoRight.out.link(depth.right)
+        # depth.depth.link(xoutDepth.input)
+
         camRgb = pipeline.create(dai.node.ColorCamera)
         camRgb.setBoardSocket(dai.CameraBoardSocket.CAM_A)
         camRgb.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
-
         xoutRgb = pipeline.create(dai.node.XLinkOut)
         xoutRgb.setStreamName("rgb")
         camRgb.video.link(xoutRgb.input)
@@ -34,17 +58,22 @@ class DAIThread(Thread):
 
         self.frame = None
         self.timestamp = None
+        self.depthFrame = np.zeros((1080, 1920))
         self.should_stop = threading.Event()
 
     def run(self):
         with dai.Device(self.pipeline, self.device_info) as device:
             # Output queue will be used to get the rgb frames from the output defined above
             qRgb = device.getOutputQueue(name="rgb", maxSize=1, blocking=False)
+            # qDepth = device.getOutputQueue(name="depth", maxSize=1, blocking=False)
             while not self.should_stop.is_set():
                 inRgb = qRgb.get()
+                # inDepth = qDepth.get()  # blocking call, will wait until a new data has arrived
                 if inRgb is not None:
-                    self.frame = inRgb.getFrame()
+                    self.frame = inRgb.getCvFrame()
                     self.timestamp = time.time()
+                # if inDepth is not None:
+                #     self.depthFrame = inDepth.getFrame()
 
 class DepthAI(hardwareBase):
     def __init__(self, name, device_MxId, **kwargs):
@@ -59,10 +88,12 @@ class DepthAI(hardwareBase):
     def get_sensors(self):
         # get all data from all topics
         last_img = copy.deepcopy(self.thread.frame)
-        while last_img is None:
+        last_depth = copy.deepcopy(self.thread.frame)
+        while last_img is None or last_depth is None:
             last_img = copy.deepcopy(self.thread.frame)
+            last_depth = copy.deepcopy(self.thread.depthFrame)
             time.sleep(0.1)
-        return {'time':self.thread.timestamp, 'rgb': last_img}
+        return {'time':self.thread.timestamp, 'rgb': last_img, 'd': last_depth}
 
     def apply_commands(self):
         return 0
